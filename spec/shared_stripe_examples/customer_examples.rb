@@ -34,6 +34,35 @@ shared_examples 'Customer API' do
     expect(customer.default_card).to be_nil
   end
 
+  it 'creates a customer with a plan' do
+    plan = Stripe::Plan.create(id: 'silver')
+    customer = Stripe::Customer.create(id: 'test_cus_plan', card: 'tk', :plan => 'silver')
+
+    customer = Stripe::Customer.retrieve('test_cus_plan')
+    expect(customer.subscription).to_not be_nil
+    expect(customer.subscription.plan.id).to eq('silver')
+    expect(customer.subscription.customer).to eq(customer.id)
+  end
+
+  it 'cannot create a customer with a plan that does not exist' do
+    expect {
+      customer = Stripe::Customer.create(id: 'test_cus_no_plan', card: 'tk', :plan => 'non-existant')
+    }.to raise_error {|e|
+      expect(e).to be_a(Stripe::InvalidRequestError)
+      expect(e.message).to eq('No such plan: non-existant')
+    }
+  end
+
+  it 'cannot create a customer with an exsting plan, but no card token' do
+    plan = Stripe::Plan.create(id: 'p')
+    expect {
+      customer = Stripe::Customer.create(id: 'test_cus_no_plan', :plan => 'p')
+    }.to raise_error {|e|
+      expect(e).to be_a(Stripe::InvalidRequestError)
+      expect(e.message).to eq('You must supply a valid card')
+    }
+  end
+
   it "stores a created stripe customer in memory" do
     customer = Stripe::Customer.create({
       email: 'johnny@appleseed.com',
@@ -110,91 +139,6 @@ shared_examples 'Customer API' do
     expect(original.default_card).to eq(new_card.id)
 
     expect(new_card.id).to_not eq(card.id)
-  end
-
-  it "updates a stripe customer's subscription" do
-    plan = Stripe::Plan.create(id: 'silver')
-    customer = Stripe::Customer.create(id: 'test_customer_sub', card: 'tk')
-    sub = customer.update_subscription({ :plan => 'silver' })
-
-    expect(sub.object).to eq('subscription')
-    expect(sub.plan.id).to eq('silver')
-    expect(sub.plan.to_hash).to eq(plan.to_hash)
-
-    customer = Stripe::Customer.retrieve('test_customer_sub')
-    expect(customer.subscription).to_not be_nil
-    expect(customer.subscription.id).to eq(sub.id)
-    expect(customer.subscription.plan.id).to eq('silver')
-    expect(customer.subscription.customer).to eq(customer.id)
-  end
-
-  it "throws an error when subscribing a customer with no card" do
-    plan = Stripe::Plan.create(id: 'enterprise', amount: 499)
-    customer = Stripe::Customer.create(id: 'cardless')
-
-    expect { customer.update_subscription({ :plan => 'enterprise' }) }.to raise_error {|e|
-      expect(e).to be_a Stripe::InvalidRequestError
-      expect(e.http_status).to eq(400)
-      expect(e.message).to_not be_nil
-    }
-  end
-
-  it "subscribes a customer with no card to a free plan" do
-    plan = Stripe::Plan.create(id: 'free_tier', amount: 0)
-    customer = Stripe::Customer.create(id: 'cardless')
-    sub = customer.update_subscription({ :plan => 'free_tier' })
-
-    expect(sub.object).to eq('subscription')
-    expect(sub.plan.id).to eq('free_tier')
-    expect(sub.plan.to_hash).to eq(plan.to_hash)
-
-    customer = Stripe::Customer.retrieve('cardless')
-    expect(customer.subscription).to_not be_nil
-    expect(customer.subscription.id).to eq(sub.id)
-    expect(customer.subscription.plan.id).to eq('free_tier')
-    expect(customer.subscription.customer).to eq(customer.id)
-  end
-
-  it "subscribes a customer with no card to a plan with a free trial" do
-    plan = Stripe::Plan.create(id: 'trial', amount: 999, trial_period_days: 14)
-    customer = Stripe::Customer.create(id: 'cardless')
-    sub = customer.update_subscription({ :plan => 'trial' })
-
-    expect(sub.object).to eq('subscription')
-    expect(sub.plan.id).to eq('trial')
-    expect(sub.plan.to_hash).to eq(plan.to_hash)
-
-    customer = Stripe::Customer.retrieve('cardless')
-    expect(customer.subscription).to_not be_nil
-    expect(customer.subscription.id).to eq(sub.id)
-    expect(customer.subscription.plan.id).to eq('trial')
-    expect(customer.subscription.customer).to eq(customer.id)
-  end
-
-  it "cancels a stripe customer's subscription" do
-    plan = Stripe::Plan.create(id: 'the truth')
-    customer = Stripe::Customer.create(id: 'test_customer_sub', card: 'tk')
-    sub = customer.update_subscription({ :plan => 'the truth' })
-
-    result = customer.cancel_subscription
-    expect(result.deleted).to eq(true)
-    expect(result.id).to eq(sub.id)
-    customer = Stripe::Customer.retrieve('test_customer_sub')
-    expect(customer.subscription).to be_nil
-  end
-
-  it "cannot update to a plan that does not exist" do
-    customer = Stripe::Customer.create(id: 'test_customer_sub')
-    expect {
-      customer.update_subscription(plan: 'imagination')
-    }.to raise_error Stripe::InvalidRequestError
-  end
-
-  it "cannot cancel a plan that does not exist" do
-    customer = Stripe::Customer.create(id: 'test_customer_sub')
-    expect {
-      customer.cancel_subscription(plan: 'imagination')
-    }.to raise_error Stripe::InvalidRequestError
   end
 
   it "deletes a customer" do

@@ -36,7 +36,6 @@ shared_examples 'Charge API' do
     expect(data[charge2.id][:amount]).to eq(777)
   end
 
-
   it "retrieves a stripe charge" do
     original = Stripe::Charge.create({
       amount: 777,
@@ -57,6 +56,32 @@ shared_examples 'Charge API' do
     }
   end
 
+  context "retrieving a list of charges" do
+    before do
+      @customer = Stripe::Customer.create(email: 'johnny@appleseed.com')
+      @charge = Stripe::Charge.create(customer: @customer.id)
+      @charge2 = Stripe::Charge.create
+    end
+
+    it "stores charges for a customer in memory" do
+      expect(@customer.charges.map(&:id)).to eq([@charge.id])
+    end
+
+    it "stores all charges in memory" do
+      expect(Stripe::Charge.all.map(&:id)).to eq([@charge.id, @charge2.id])
+    end
+
+    it "defaults count to 10 charges" do
+      11.times { Stripe::Charge.create }
+      expect(Stripe::Charge.all.count).to eq(10)
+    end
+
+    context "when passing count" do
+      it "gets that many charges" do
+        expect(Stripe::Charge.all(count: 1).count).to eq(1)
+      end
+    end
+  end
 
   context "With strict mode toggled off" do
 
@@ -119,5 +144,20 @@ shared_examples 'Charge API' do
       expect(returned_charge.id).to eq(charge.id)
       expect(returned_charge.captured).to be_true
     end
+  end
+
+  it "refunds a stripe charge item" do
+    charge = Stripe::Charge.create(
+      amount: 999,
+      currency: 'USD',
+      card: 'card_token_abcde',
+      description: 'card charge'
+    )
+
+    charge = charge.refund(amount: 999)
+
+    expect(charge.refunded).to eq(true)
+    expect(charge.refunds.first.amount).to eq(999)
+    expect(charge.amount_refunded).to eq(999)
   end
 end

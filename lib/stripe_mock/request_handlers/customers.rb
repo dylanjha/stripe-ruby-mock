@@ -19,6 +19,19 @@ module StripeMock
           cards << get_card_by_token(params.delete(:card))
           params[:default_card] = cards.first[:id]
         end
+
+        if params[:plan]
+          plan = plans[ params[:plan] ]
+          assert_existance :plan, params[:plan], plan
+
+          if params[:default_card].nil? && plan[:trial_period_days].nil? && plan[:amount] != 0
+            raise Stripe::InvalidRequestError.new('You must supply a valid card', nil, 400)
+          end
+
+          sub = Data.mock_subscription id: new_id('su'), plan: plan, customer: params[:id]
+          params[:subscription] = sub
+        end
+
         customers[ params[:id] ] = Data.mock_customer(cards, params)
       end
 
@@ -30,6 +43,12 @@ module StripeMock
 
         plan = plans[ params[:plan] ]
         assert_existance :plan, params[:plan], plan
+
+        if params[:card]
+          new_card = get_card_by_token(params.delete(:card))
+          add_card_to_customer(new_card, customer)
+          customer[:default_card] = new_card[:id]
+        end
 
         # Ensure customer has card to charge if plan has no trial and is not free
         if customer[:default_card].nil? && plan[:trial_period_days].nil? && plan[:amount] != 0
@@ -49,12 +68,19 @@ module StripeMock
         sub = customer[:subscription]
         assert_existance nil, nil, sub, "No active subscription for customer: #{$1}"
 
-        customer[:subscription] = nil
-
         plan = plans[ sub[:plan][:id] ]
         assert_existance :plan, params[:plan], plan
 
-        Data.mock_delete_subscription(id: sub[:id])
+        if params[:at_period_end] == true
+          status = 'active'
+          cancel_at_period_end = true
+        else
+          status = 'canceled'
+          cancel_at_period_end = false
+        end
+
+        sub = Data.mock_subscription id: sub[:id], plan: plan, customer: $1, status: status, cancel_at_period_end: cancel_at_period_end
+        customer[:subscription] = sub
       end
 
       def update_customer(route, method_url, params, headers)

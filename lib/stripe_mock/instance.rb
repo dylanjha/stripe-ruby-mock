@@ -18,26 +18,37 @@ module StripeMock
     include StripeMock::RequestHandlers::Charges
     include StripeMock::RequestHandlers::Cards
     include StripeMock::RequestHandlers::Customers
+    include StripeMock::RequestHandlers::Events
+    include StripeMock::RequestHandlers::Invoices
     include StripeMock::RequestHandlers::InvoiceItems
     include StripeMock::RequestHandlers::Plans
     include StripeMock::RequestHandlers::Recipients
 
 
-    attr_reader :charges, :customers, :plans, :error_queue, :recipients
-    attr_reader :bank_tokens
-    attr_accessor :debug, :strict
+    attr_reader :bank_tokens, :charges, :customers, :events,
+                :invoices, :plans, :recipients, :error_queue
+
+    attr_reader :bank_tokens, :charges, :customers, :events,
+                :invoices, :plans, :recipients
+
+    attr_accessor :error_queue, :debug, :strict
 
     def initialize
+      @bank_tokens = {}
+      @card_tokens = {}
       @customers = {}
       @recipients = {}
       @charges = {}
+      @events = {}
+      @invoices = {}
       @plans = {}
       @bank_tokens = {}
       @card_tokens = {}
+      @recipients = {}
 
-      @id_counter = 0
-      @error_queue = ErrorQueue.new
       @debug = false
+      @error_queue = ErrorQueue.new
+      @id_counter = 0
       @strict = true
     end
 
@@ -79,8 +90,13 @@ module StripeMock
     def generate_card_token(card_params)
       token = new_id 'tok'
       card_params[:id] = new_id 'cc'
-      @card_tokens[token] = Data.mock_card(card_params)
+      @card_tokens[token] = Data.mock_card symbolize_names(card_params)
       token
+    end
+
+    def generate_event(event_data)
+      event_data[:id] ||= new_id 'evt'
+      @events[ event_data[:id] ] = symbolize_names(event_data)
     end
 
     def get_bank_by_token(token)
@@ -97,6 +113,10 @@ module StripeMock
       else
         @card_tokens.delete(token)
       end
+    end
+
+    def get_customer_card(customer, token)
+      customer[:cards][:data].find{|cc| cc[:id] == token }
     end
 
     def add_card_to_customer(card, cus)
@@ -127,6 +147,10 @@ module StripeMock
     def new_id(prefix)
       # Stripe ids must be strings
       "test_#{prefix}_#{@id_counter += 1}"
+    end
+
+    def symbolize_names(hash)
+      Stripe::Util.symbolize_names(hash)
     end
 
   end
